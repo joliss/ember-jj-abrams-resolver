@@ -9,18 +9,29 @@ define("resolver",
    * important features:
    *
    *  1) The resolver makes the container aware of es6 modules via the AMD
-   *     output. The loader's _seen is consulted so that classes can be 
+   *     output. The loader's _seen is consulted so that classes can be
    *     resolved directly via the module loader, without needing a manual
    *     `import`.
    *  2) is able provide injections to classes that implement `extend`
    *     (as is typical with Ember).
    */
 
+  // Return module or null
+  function tryRequire(deps) {
+    try {
+      return require(deps, null, null, true /* force sync */);
+    } catch (err) {
+      if (err.code === 'MODULE_NOT_FOUND')
+        return null;
+      throw err;
+    }
+  }
+
   function classFactory(klass) {
     return {
       create: function (injections) {
         if (typeof klass.extend === 'function') {
-          return klass.extend(injections);  
+          return klass.extend(injections);
         } else {
           return klass;
         }
@@ -51,16 +62,16 @@ define("resolver",
     };
   }
 
-  function chooseModuleName(seen, moduleName) {
+  function chooseModuleName(moduleName) {
     var underscoredModuleName = Ember.String.underscore(moduleName);
 
-    if (moduleName !== underscoredModuleName && seen[moduleName] && seen[underscoredModuleName]) {
+    if (moduleName !== underscoredModuleName && tryRequire(moduleName) && tryRequire(underscoredModuleName)) {
       throw new TypeError("Ambigous module names: `" + moduleName + "` and `" + underscoredModuleName + "`");
     }
 
-    if (seen[moduleName]) {
+    if (tryRequire(moduleName)) {
       return moduleName;
-    } else if (seen[underscoredModuleName]) {
+    } else if (tryRequire(moduleName)) {
       return underscoredModuleName;
     } else {
       return moduleName;
@@ -75,8 +86,8 @@ define("resolver",
 
     if (parsedName.fullName === 'router:main') {
       // for now, lets keep the router at app/router.js
-      if (requirejs._eak_seen[prefix + '/router']) {
-        routerModule = require(prefix + '/router');
+      routerModule = tryRequire(prefix + '/router');
+      if (routerModule) {
         if (routerModule.default) { routerModule = routerModule.default; }
 
         return routerModule;
@@ -97,11 +108,10 @@ define("resolver",
 
     // allow treat all dashed and all underscored as the same thing
     // supports components with dashes and other stuff with underscores.
-    var normalizedModuleName = chooseModuleName(requirejs._eak_seen, moduleName);
+    var normalizedModuleName = chooseModuleName(moduleName);
 
-    if (requirejs._eak_seen[normalizedModuleName]) {
-      var module = require(normalizedModuleName, null, null, true /* force sync */);
-
+    var module = tryRequire(normalizedModuleName);
+    if (module) {
       if (module.default) { module = module.default; }
 
       if (module === undefined) {
